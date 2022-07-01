@@ -1,17 +1,35 @@
+"""
+    The program will take in two arguments: an input file and an output folder.
+
+    Using python3 with no loops like for and while (use map filter reduce):
+
+    1) Read an input FASTA file of nucleotide sequences (using built-in libraries)
+    2) Reverse complement each sequence and output to another fasta file in the output directory (using built-in libraries)
+    3) Plot the nucleotide composition of each reverse complement sequence (so a Trellis plot where each facet represents a sequence) and save as an html to the output directory (using Altair)
+    4) Report a statistical test between the first two reverse complement sequences to see if they have significantly different distributions of nucleotides and print the results to stderr (using SciPy)
+"""
+
 import os
-import pandas as pd
-import altair as alt
-import vega_datasets as vds
-from scipy import stats
-import numpy as np
 from sys import stderr, argv
+from scipy import stats
 
 
-NUCLEUS = {'A':'T','T':'A','G':'C','C':'G'}
+NUCLEOTIDE_DICT = {'A':'T', 'T':'A', 'G':'C', 'C':'G'}
+
+# sequence dictionary mapping sequence number to number of each nucleotide
 sequences = {}
+
+# global variable to keep track of current sequence number
 current_sequence = -1
 
+
 def reverse_nucleotide(line):
+    """
+    Perform reverse complement of nucleotide sequence and adds
+    each sequence number to a dict
+
+    @param line: nucletide sequence as a string
+    """
     global current_sequence
     if line[0] == ">":
         current_sequence = int(line.strip()[1:])
@@ -20,7 +38,7 @@ def reverse_nucleotide(line):
         }
         return line
     try:
-        sequence = ''.join(map(lambda x: NUCLEUS[x] if x in NUCLEUS.keys() else x, list(line.strip()[::-1])))            
+        sequence = ''.join(map(lambda x: NUCLEOTIDE_DICT[x], list(line.strip()[::-1])))
         sequences[current_sequence]['A'] += sequence.count('A')
         sequences[current_sequence]['T'] += sequence.count('T')
         sequences[current_sequence]['G'] += sequence.count('G')
@@ -31,68 +49,34 @@ def reverse_nucleotide(line):
         exit(1)
 
 
-def calc_distribution(sequence):
-    distribution = {}
-    total = sequence['A'] + sequence['T'] + sequence['G'] + sequence['C']
-    distribution['A'] = sequence['A'] / total
-    distribution['T'] = sequence['T'] / total
-    distribution['G'] = sequence['G'] / total
-    distribution['C'] = sequence['C'] / total
-    return distribution
+def reverse_asta_file(input_file, output_dir):
+    """
+    Perform reverse complement of given fasta file and write results to
+    to given output directort
 
-# The program will take in two arguments: an input file and an output folder.
+    @param input_file: input fasta file
+    @param output_dir: output directory to write reverse complement of fasta file
 
-# Using python3 with no loops like for and while (use map filter reduce):
-
-# Read an input FASTA file of nucleotide sequences (using built-in libraries)
-# Reverse complement each sequence and output to another fasta file in the output directory (using built-in libraries)
-# Plot the nucleotide composition of each reverse complement sequence (so a Trellis plot where each facet represents a sequence) and save as an html to the output directory (using Altair)
-# Report a statistical test between the first two reverse complement sequences to see if they have significantly different distributions of nucleotides and print the results to stderr (using SciPy)
-
-def reverse_asta_file(input_file, output_dir): 
-    # source = vds.data.cars()    
-    # array = source.to_numpy()    
-    # chart = alt.Chart(source).mark_point().encode(
-    #     x='Horsepower:Q',
-    #     y='Miles_per_Gallon:Q',
-    #     row='Origin:N'
-    # ).interactive()    
-    # chart.show()
-
+    """
     # Open fasta file for reading
     with open(input_file, 'r') as fasta_input:
         # Reverse complement each sequence 
         fasta_lines = fasta_input.readlines()        
         reversed_fasta = map(reverse_nucleotide, fasta_lines)
-        
+
         # Write result to file in the output directory
         with open(os.path.join(output_dir, "output.fasta"), 'w') as output:
             output.writelines(reversed_fasta)
 
-        # # Plot trellis plot of nucleotide composition of each sequence
-        
-        # data = pd.DataFrame( {
-        #     'sequence_num': sorted(sequences.keys()),
-        #     'A': map(lambda sequence: sequence['A'], sequences.iteritems),
-        #     'T': map(lambda sequence: sequence['T'], sequences), 
-        #     'G': map(lambda sequence: sequence['G'], sequences),             
-        #     'C': map(lambda sequence: sequence['C'], sequences) 
-        # })
-        # chart = alt.Chart(sequences)
-        # chart.mark_point().encode(
-        #     x='nucleotide:Q',
-        #     y='count:Q',
-        #     row='sequence_num:N'
-        # )
 
-        # Calculate and print distribution of nucleotides of first two sequences        
-        t_check = stats.ttest_ind([sequences[1]['A'], sequences[1]['T'], sequences[1]['G'], sequences[1]['C']], 
-                                    [sequences[2]['A'], sequences[2]['T'], sequences[2]['G'], sequences[2]['C']])
-        # print('\tA\tT\tG\tC', file=stderr)
-        # print('\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}'.format(fst_sequence_dist['A'], fst_sequence_dist['T'], fst_sequence_dist['G'], fst_sequence_dist['C']), file=stderr)
-        # print('\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}'.format(sec_sequence_dist['A'], sec_sequence_dist['T'], sec_sequence_dist['G'], sec_sequence_dist['C']), file=stderr)
-        print(t_check, file=stderr)
-
-# Pass file to input fasta file as an argument
 if __name__ == "__main__":
-    reverse_asta_file(argv[1], os.path.curdir)
+    # Reverse complement fasta file as an argument and write result to the current directory as a second argument
+    reverse_asta_file(argv[1], argv[2])
+
+    # Calculate and print T test of nucleotide distributions of first two sequences
+    sequence_nums = sorted(sequences.keys)
+    first_seq = sequence_nums[0]
+    sec_seq = sequence_nums[1]
+    t_check = stats.ttest_ind([sequences[first_seq]['A'], sequences[first_seq]['T'], sequences[first_seq]['G'], sequences[first_seq]['C']],
+                              [sequences[sec_seq]['A'], sequences[sec_seq]['T'], sequences[sec_seq]['G'], sequences[sec_seq]['C']])
+    print('Nucleotide T test: {}'.format(t_check), file=stderr)
