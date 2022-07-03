@@ -11,9 +11,14 @@
 
 import os
 from sys import stderr, argv
+import itertools
 from scipy import stats
+import pandas as pd
+import altair as alt
+import numpy as np
 
 
+NUCLEOTIDE_LIST = ['A', 'T', 'G', 'C']
 NUCLEOTIDE_DICT = {'A':'T', 'T':'A', 'G':'C', 'C':'G'}
 
 # sequence dictionary mapping sequence number to number of each nucleotide
@@ -52,7 +57,7 @@ def reverse_nucleotide(line):
 def reverse_asta_file(input_file, output_dir):
     """
     Perform reverse complement of given fasta file and write results to
-    to given output directort
+    to given output directory
 
     @param input_file: input fasta file
     @param output_dir: output directory to write reverse complement of fasta file
@@ -73,8 +78,33 @@ if __name__ == "__main__":
     # Reverse complement fasta file as an argument and write result to the current directory as a second argument
     reverse_asta_file(argv[1], argv[2])
 
+    # Plot the nucleotide composition of each reverse complement sequence
+    sequence_nums = sorted(sequences.keys())
+    frequencies = list(map(lambda sequence_num:
+                     [
+                        sequences[sequence_num]['A'] /
+                        (sequences[sequence_num]['A'] + sequences[sequence_num]['T'] + sequences[sequence_num]['G']+ sequences[sequence_num]['C']) * 100.,
+                        sequences[sequence_num]['T'] /
+                        (sequences[sequence_num]['A'] + sequences[sequence_num]['T'] + sequences[sequence_num]['G']+ sequences[sequence_num]['C']) * 100.,
+                        sequences[sequence_num]['G'] /
+                        (sequences[sequence_num]['A'] + sequences[sequence_num]['T'] + sequences[sequence_num]['G']+ sequences[sequence_num]['C']) * 100.,
+                        sequences[sequence_num]['C'] /
+                        (sequences[sequence_num]['A'] + sequences[sequence_num]['T'] + sequences[sequence_num]['G']+ sequences[sequence_num]['C']) * 100.
+                     ],
+                     sequence_nums))
+    data = pd.DataFrame({
+        'sequence': list(itertools.chain(*list(map(lambda sequence_num: np.repeat(sequence_num, 4), sequence_nums)))),
+        'nucleotide': NUCLEOTIDE_LIST * len(sequence_nums),
+        'frequency': list(itertools.chain(*frequencies))
+    })
+    chart = alt.Chart(data).mark_point().encode(
+        x='nucleotide:N',
+        y='frequency:Q',
+        row='sequence:Q'
+    )
+    chart.save("chart.html")
+
     # Calculate and print T test of nucleotide distributions of first two sequences
-    sequence_nums = sorted(sequences.keys)
     first_seq = sequence_nums[0]
     sec_seq = sequence_nums[1]
     t_check = stats.ttest_ind([sequences[first_seq]['A'], sequences[first_seq]['T'], sequences[first_seq]['G'], sequences[first_seq]['C']],
