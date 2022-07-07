@@ -11,6 +11,7 @@
 
 import os
 from sys import stderr, argv
+from functools import reduce
 import itertools
 from scipy import stats
 import pandas as pd
@@ -18,7 +19,7 @@ import altair as alt
 import numpy as np
 
 
-NUCLEOTIDE_LIST = ['A', 'T', 'G', 'C']
+# Dictionary mapping nucleotides to their complement
 NUCLEOTIDE_DICT = {'A':'T', 'T':'A', 'G':'C', 'C':'G'}
 
 # sequence dictionary mapping sequence number to number of each nucleotide
@@ -38,16 +39,14 @@ def reverse_nucleotide(line):
     global current_sequence
     if line[0] == ">":
         current_sequence = int(line.strip()[1:])
-        sequences[current_sequence] = {
-            'A': 0, 'T': 0, 'G': 0, 'C': 0
-        }
+        sequences[current_sequence] = dict(zip(NUCLEOTIDE_DICT.keys(), [0] * len(NUCLEOTIDE_DICT.keys())))
         return line
     try:
         sequence = ''.join(map(lambda x: NUCLEOTIDE_DICT[x], list(line.strip()[::-1])))
-        sequences[current_sequence]['A'] += sequence.count('A')
-        sequences[current_sequence]['T'] += sequence.count('T')
-        sequences[current_sequence]['G'] += sequence.count('G')
-        sequences[current_sequence]['C'] += sequence.count('C')
+        keys = NUCLEOTIDE_DICT.keys()
+        sequences[current_sequence] = dict(zip(keys,
+                                               list(map(lambda nucleotide: sequences[current_sequence][nucleotide] + sequence.count(nucleotide),
+                                                        keys))))
         return sequence + '\n'
     except KeyError:
         print("Invalid nucleotide")
@@ -75,26 +74,21 @@ def reverse_asta_file(input_file, output_dir):
 
 
 if __name__ == "__main__":
-    # Reverse complement fasta file as an argument and write result to the current directory as a second argument
+    # Reverse complement given fasta file and write result to a given directory
     reverse_asta_file(argv[1], argv[2])
 
     # Plot the nucleotide composition of each reverse complement sequence
     sequence_nums = sorted(sequences.keys())
+    nucleotides = list(NUCLEOTIDE_DICT.keys())
     frequencies = list(map(lambda sequence_num:
-                     [
-                        sequences[sequence_num]['A'] /
-                        (sequences[sequence_num]['A'] + sequences[sequence_num]['T'] + sequences[sequence_num]['G']+ sequences[sequence_num]['C']) * 100.,
-                        sequences[sequence_num]['T'] /
-                        (sequences[sequence_num]['A'] + sequences[sequence_num]['T'] + sequences[sequence_num]['G']+ sequences[sequence_num]['C']) * 100.,
-                        sequences[sequence_num]['G'] /
-                        (sequences[sequence_num]['A'] + sequences[sequence_num]['T'] + sequences[sequence_num]['G']+ sequences[sequence_num]['C']) * 100.,
-                        sequences[sequence_num]['C'] /
-                        (sequences[sequence_num]['A'] + sequences[sequence_num]['T'] + sequences[sequence_num]['G']+ sequences[sequence_num]['C']) * 100.
-                     ],
-                     sequence_nums))
+                           list(map(lambda nucleotide:
+                                    sequences[sequence_num][nucleotide] /
+                                    reduce(lambda a, b: a+b, sequences[sequence_num].values()) * 100.,
+                                    nucleotides)),
+                           sequence_nums))
     data = pd.DataFrame({
         'sequence': list(itertools.chain(*list(map(lambda sequence_num: np.repeat(sequence_num, 4), sequence_nums)))),
-        'nucleotide': NUCLEOTIDE_LIST * len(sequence_nums),
+        'nucleotide': nucleotides * len(sequence_nums),
         'frequency': list(itertools.chain(*frequencies))
     })
     chart = alt.Chart(data).mark_point().encode(
@@ -107,6 +101,6 @@ if __name__ == "__main__":
     # Calculate and print T test of nucleotide distributions of first two sequences
     first_seq = sequence_nums[0]
     sec_seq = sequence_nums[1]
-    t_check = stats.ttest_ind([sequences[first_seq]['A'], sequences[first_seq]['T'], sequences[first_seq]['G'], sequences[first_seq]['C']],
-                              [sequences[sec_seq]['A'], sequences[sec_seq]['T'], sequences[sec_seq]['G'], sequences[sec_seq]['C']])
+    t_check = stats.ttest_ind(list(map(lambda nucleotide: sequences[first_seq][nucleotide], nucleotides)),
+                              list(map(lambda nucleotide: sequences[sec_seq][nucleotide], nucleotides)))
     print('Nucleotide T test: {}'.format(t_check), file=stderr)
